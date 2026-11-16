@@ -1,0 +1,31 @@
+spring:
+  application:
+    name: xml-splitter
+  main:
+    banner-mode: off
+    web-application-type: none
+    log-startup-info: false
+
+# Defaults for every run. Each value can be overridden from the command line
+# (see `--help`), e.g. --max-transactions=1000 --header-mode=first-only
+splitter:
+  # X: maximum Transactions per output file (soft limit applied at Policy boundaries)
+  max-transactions: 5000
+  # Element that is never split; output files hold whole runs of it (matched by local name)
+  split-element: Policy
+  # Element counted against X, at any depth inside a split element (matched by local name)
+  counted-element: Transaction
+  # Non-split elements before the first Policy: every-file | first-only
+  header-mode: every-file
+  # Non-split elements after the last Policy: last-file | every-file
+  trailer-mode: last-file
+  # Empty means <input folder>/<input name>-parts
+  output-dir:
+  overwrite: false
+
+logging:
+  level:
+    root: WARN
+    com.transunion.xmlsplitter: INFO
+  pattern:
+    console: "%d{HH:mm:ss.SSS} %-5level %msg%n"
