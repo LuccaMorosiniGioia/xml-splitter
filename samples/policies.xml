@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Small sample: 6 Policies, 10 Transactions. Try it with a limit of 4 Transactions per file. -->
+<Document xmlns="urn:example:insurance" xmlns:meta="urn:example:meta" batchId="B-2026-11" source="core-system">
+  <Header>
+    <meta:GeneratedAt>2026-11-16T10:00:00Z</meta:GeneratedAt>
+    <Sender code="TU">TransUnion</Sender>
+  </Header>
+  <Policy id="P-001" product="AUTO">
+    <Holder name="Ana Pérez" document="12345678"/>
+    <Claim id="C-001" status="OPEN">
+      <Transaction id="T-001" amount="1500.00" currency="ARS"/>
+    </Claim>
+  </Policy>
+  <Policy id="P-002" product="HOME">
+    <Claim id="C-002">
+      <Transaction id="T-002" amount="200.50"/>
+      <Transaction id="T-003" amount="99.99"><Note><![CDATA[Partial refund <approved>]]></Note></Transaction>
+    </Claim>
+  </Policy>
+  <!-- A Policy with two Claims -->
+  <Policy id="P-003" product="LIFE">
+    <Claim id="C-003"><Transaction id="T-004" amount="10"/></Claim>
+    <Claim id="C-004"><Transaction id="T-005" amount="20"/></Claim>
+  </Policy>
+  <Policy id="P-004" product="AUTO">
+    <Claim id="C-005">
+      <Transaction id="T-006" amount="1"/>
+      <Transaction id="T-007" amount="2"/>
+      <Transaction id="T-008" amount="3"/>
+    </Claim>
+  </Policy>
+  <Policy id="P-005" product="AUTO">
+    <Claim id="C-006"><Adjustments><Transaction id="T-009" amount="5" meta:origin="manual"/></Adjustments></Claim>
+  </Policy>
+  <Policy id="P-006" product="HOME">
+    <Claim id="C-007"><Transaction id="T-010" amount="7"/></Claim>
+  </Policy>
+  <Trailer policyCount="6" transactionCount="10"/>
+</Document>
