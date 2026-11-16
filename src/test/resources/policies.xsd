@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Schema for the documents produced by TestXml; strict about Document's children so tests can break it. -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:p="urn:test:policies"
+           targetNamespace="urn:test:policies"
+           elementFormDefault="qualified">
+
+  <xs:element name="Document">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Header" minOccurs="0">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:any namespace="##any" processContents="skip" minOccurs="0" maxOccurs="unbounded"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element ref="p:Policy" minOccurs="0" maxOccurs="unbounded"/>
+        <xs:element name="Trailer" minOccurs="0">
+          <xs:complexType>
+            <xs:attribute name="checksum" type="xs:string"/>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+      <xs:attribute name="batch" type="xs:string"/>
+      <xs:anyAttribute namespace="##other" processContents="skip"/>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="Policy">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Holder">
+          <xs:complexType>
+            <xs:attribute name="name" type="xs:string"/>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="Claim" maxOccurs="unbounded">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:any namespace="##targetNamespace" processContents="lax" minOccurs="0" maxOccurs="unbounded"/>
+            </xs:sequence>
+            <xs:attribute name="id" type="xs:string" use="required"/>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+      <xs:attribute name="id" type="xs:string" use="required"/>
+      <xs:attribute name="product" type="xs:string"/>
+      <xs:anyAttribute namespace="##other" processContents="skip"/>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>
