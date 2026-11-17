@@ -337,15 +337,18 @@ Preguntas abiertas, que dependen del XML real:
 
 ## Tiempo invertido y herramientas
 
-**Tiempo invertido** (a completar por Lucca):
+**Tiempo invertido**
 
 | Etapa | Tiempo |
 |---|---|
 | Análisis inicial y documento de alineamiento (con Gemini) | ~2 h |
-| Revisión de las aclaraciones y decisiones | _completar_ |
-| Implementación y tests | _completar_ |
-| README y revisión final | _completar_ |
-| **Total** | _completar_ |
+| Revisión de las aclaraciones y decisiones | ~1 h |
+| Implementación y tests | ~30 min (código generado por un agente de IA a partir de las decisiones anteriores, con mi revisión y dirección) |
+| README y revisión final | ~1 h |
+| **Total** | **~2 h 30 min** |
+
+El tiempo corto de implementación refleja el uso de IA; la mayor parte del esfuerzo estuvo en las decisiones
+de diseño y en la revisión del resultado.
 
 **Herramientas**
 
