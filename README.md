@@ -170,7 +170,7 @@ El núcleo no tiene anotaciones de Spring ni conoce la CLI; un endpoint REST o S
 
 | # | Decisión | Por qué | Trade-off |
 |---|---|---|---|
-| 1 | **X como límite "blando" en el borde de cada Policy.** Se cierra el archivo **antes** de una Policy que lo haría superar X. Solo se supera X si una Policy sola tiene más de X Transactions: va sola en su propio archivo (`overLimit: true` en el manifiesto). | Goyô aclaró que una Policy/Claim nunca se divide aunque se pase el límite. Cerrar antes mantiene la garantía "≤ X" siempre que es posible. | Un archivo puede quedar hasta ~100 Transactions por debajo de X (≈2 % con X = 5.000). |
+| 1 | **X como límite "blando" en el borde de cada Policy.** Se cierra el archivo **antes** de una Policy que lo haría superar X. Solo se supera X si una Policy sola tiene más de X Transactions: va sola en su propio archivo (`overLimit: true` en el manifiesto). | Requisito: una Policy/Claim nunca se divide, aunque supere X. Cerrar el archivo antes mantiene la garantía "≤ X" siempre que es posible. | Como un archivo se cierra antes de una Policy que no entra, el espacio que queda sin usar siempre es menor que el tamaño de esa Policy. Las Policies rara vez superan ~100 Transactions, así que en el peor caso un archivo queda ~99 por debajo de X (< 2 % con X = 5.000); en la prueba de 320 MB el llenado promedio fue 99,6 %. La alternativa, partir una Policy para llenar exactamente X, está prohibida por los requisitos. |
 | 2 | **Root + header en todos los archivos, trailer solo en el último** (configurable). | Cada archivo debe ser un documento válido y autocontenido con la jerarquía original; el trailer suele ser un resumen del lote completo. | El header se duplica (pocos bytes). Si el trailer contiene totales del lote, en los archivos parciales no coinciden con su contenido: por eso por defecto va solo en el último. |
 | 3 | **Se preserva el orden de entrada.** | Reordenar (bin packing) ganaría como mucho ~2 % de llenado, y se pierde trazabilidad: la parte N es un tramo contiguo del original, comparable línea a línea. Además obligaría a retener o releer Policies. | Algunos archivos un poco menos llenos. El motivo está documentado en `SequentialGreedyPacking`. |
 | 4 | **Se cuentan los `Transaction` a cualquier profundidad dentro de la Policy.** | El XML real es más complejo; no hay que asumir que cuelgan directamente de `Claim`. | Un `Transaction` fuera de una Policy (p. ej. en el header) no cuenta. |
@@ -220,6 +220,14 @@ Supuestos adicionales tomados al implementar:
     archivo sin resolverlo.
 17. **Documento sin Policies**: se genera un único archivo con root, header y trailer.
 18. **X ≥ 1**; X = 1 produce una Policy por archivo.
+
+> **Nota sobre memoria.** La memoria es plana respecto del tamaño del archivo, pero crece con la Policy más
+> grande: cada Policy se guarda como eventos hasta conocer su cantidad de Transactions, que es lo que
+> permite decidir si entra en el archivo actual. Es seguro bajo el supuesto de que las Policies son chicas
+> (casi siempre 1 Transaction, rara vez más de 100). Mitigaciones posibles (ver
+> [Mejoras futuras](#mejoras-futuras)): volcar el buffer de una Policy a un archivo temporal al superar un
+> umbral, o el enfoque de [dos pasadas](#validación-alternativa-de-dos-pasadas) ya descrito (una primera
+> pasada que cuente las Transactions de cada Policy).
 
 ## Validación: alternativa de dos pasadas
 
@@ -299,6 +307,9 @@ con el tamaño del archivo.
   verificar cada parte puede paralelizarse); la verificación posterior también es paralelizable por parte.
 - **Contenedor intermedio** (`Document > Policies > Policy`): repetir la cadena de ancestros en cada
   archivo (la idea de la pila LIFO del documento de diseño).
+- **Policies muy grandes**: volcar a un archivo temporal el buffer de una Policy que supere un umbral de
+  eventos, o contar las Transactions de cada Policy en una primera pasada, para que la memoria no dependa de
+  la Policy más grande.
 - **Modo `--validate-only`** y validación XSD de la entrada.
 - **Métricas/observabilidad** (Micrometer) y logs estructurados si corre en un servidor.
 - **Estrategias de empaquetado alternativas** (límite duro, límite por tamaño en bytes) implementando
