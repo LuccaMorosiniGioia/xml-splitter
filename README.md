@@ -318,7 +318,7 @@ con el tamaño del archivo.
 Hoy una Policy dentro de un contenedor (p. ej. `Document > Group > Policy`) falla de forma explícita
 (código 4): el enunciado solo define `Document > Policy > Claim > Transaction`, y dividir dentro de un
 contenedor no definido sería adivinar. La extensión propuesta generaliza el manejo del root a una **pila de
-elementos ancestros abiertos**; el esfuerzo estimado es de medio día a un día, con tests.
+elementos ancestros abiertos**:
 
 - Si un archivo se cierra en medio de un `Group`, se cierran los contenedores abiertos y el archivo
   siguiente los vuelve a abrir con los mismos atributos.
