@@ -351,6 +351,5 @@ Preguntas abiertas, que dependen del XML real:
 
 - Java 21 (Eclipse Temurin), Spring Boot 4.1, Maven Wrapper, Woodstox (StAX), JUnit 5, AssertJ.
 - **Gemini 3.1 Pro**: *brainstorming* inicial y documento de alineamiento arquitectónico.
-- **Cursor** (agente de IA): análisis de las aclaraciones, implementación, tests, prueba de carga y este
-  README, revisados por mí.
-- _Otras herramientas (completar)_.
+- **Cursor** (agente de IA, modelo Claude Opus 5.5 Medium): análisis de las aclaraciones, implementación,
+  tests, prueba de carga y este README, revisados por mí.
