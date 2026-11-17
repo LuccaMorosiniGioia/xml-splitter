@@ -208,8 +208,7 @@ Supuestos adicionales tomados al implementar:
 
 12. **Las Policies son hijas directas del root.** Si aparece una Policy anidada dentro de otro elemento
     (p. ej. `<Policies><Policy>`), se informa como estructura no soportada (código 4) en vez de producir una
-    salida incorrecta. Soportar un contenedor intermedio es una mejora posible (repetir la cadena de
-    ancestros en cada archivo).
+    salida incorrecta. Ver la mejora [Policies anidadas](#policies-anidadas).
 13. **Contenido intercalado entre Policies** (comentarios u otros elementos hermanos) viaja con la Policy
     siguiente, para no perderlo ni reordenarlo.
 14. **Header y trailer son chicos** y se guardan en memoria. Como protección, si hay más de 1.000.000 de
@@ -305,8 +304,7 @@ con el tamaño del archivo.
   un archivo enorme tras una caída sin reprocesarlo.
 - **Escritura en paralelo**: un hilo lector y N escritores (la lectura es secuencial, pero serializar y
   verificar cada parte puede paralelizarse); la verificación posterior también es paralelizable por parte.
-- **Contenedor intermedio** (`Document > Policies > Policy`): repetir la cadena de ancestros en cada
-  archivo (la idea de la pila LIFO del documento de diseño).
+- **Policies anidadas** dentro de elementos contenedores: ver [abajo](#policies-anidadas).
 - **Policies muy grandes**: volcar a un archivo temporal el buffer de una Policy que supere un umbral de
   eventos, o contar las Transactions de cada Policy en una primera pasada, para que la memoria no dependa de
   la Policy más grande.
@@ -314,6 +312,28 @@ con el tamaño del archivo.
 - **Métricas/observabilidad** (Micrometer) y logs estructurados si corre en un servidor.
 - **Estrategias de empaquetado alternativas** (límite duro, límite por tamaño en bytes) implementando
   `PackingStrategy`.
+
+### Policies anidadas
+
+Hoy una Policy dentro de un contenedor (p. ej. `Document > Group > Policy`) falla de forma explícita
+(código 4): el enunciado solo define `Document > Policy > Claim > Transaction`, y dividir dentro de un
+contenedor no definido sería adivinar. La extensión propuesta generaliza el manejo del root a una **pila de
+elementos ancestros abiertos**; el esfuerzo estimado es de medio día a un día, con tests.
+
+- Si un archivo se cierra en medio de un `Group`, se cierran los contenedores abiertos y el archivo
+  siguiente los vuelve a abrir con los mismos atributos.
+- Entre dos Policies, si la pila cambia, se cierran y abren los contenedores que correspondan.
+- Las Policies se ubican por nombre a cualquier profundidad, o mediante una ruta configurable
+  (`Document/Group/Policy`).
+
+Preguntas abiertas, que dependen del XML real:
+
+1. ¿El contenido propio de un contenedor (su "header") se repite en cada archivo al que se extiende, como el
+   header del root y de forma configurable, o aparece una sola vez?
+2. Totales del contenedor (atributos de conteo, trailers con sumas) quedarían incorrectos en cada archivo.
+   Recalcularlos exige conocer el esquema real, así que la propuesta es no recalcularlos nunca y
+   documentarlo.
+3. ¿Puede haber Policies a distintas profundidades en un mismo archivo?
 
 ## Tiempo invertido y herramientas
 
