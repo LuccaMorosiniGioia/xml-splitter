@@ -387,10 +387,10 @@ Preguntas abiertas, que dependen del XML real:
 | Etapa | Tiempo |
 |---|---|
 | Análisis inicial y documento de alineamiento (con Gemini) | ~2 h |
-| Revisión de las aclaraciones y decisiones | ~1 h |
+| Revisión de las aclaraciones y decisiones | ~1 h 30 min |
 | Implementación y tests | ~30 min (código generado por un agente de IA a partir de las decisiones anteriores, con mi revisión y dirección) |
-| README y revisión final | ~1 h |
-| **Total** | **~4 h 30 min** |
+| README y revisión final | ~2 h |
+| **Total** | **~6 h** |
 
 El tiempo corto de implementación refleja el uso de IA; la mayor parte del esfuerzo estuvo en las decisiones
 de diseño y en la revisión del resultado.
