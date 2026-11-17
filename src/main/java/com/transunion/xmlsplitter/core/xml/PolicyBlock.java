@@ -11,6 +11,7 @@ import javax.xml.stream.events.XMLEvent;
  * @param events       the Policy's events, preceded by whatever sat between it and the previous Policy
  *                     (whitespace, comments, interleaved non-Policy siblings), which travels with it
  * @param transactions counted elements found at any depth inside the Policy
+ * @param id           value of the Policy's {@code id} attribute, or {@code null} if it has none (for logs)
  */
-public record PolicyBlock(List<XMLEvent> events, long transactions) {
+public record PolicyBlock(List<XMLEvent> events, long transactions, String id) {
 }

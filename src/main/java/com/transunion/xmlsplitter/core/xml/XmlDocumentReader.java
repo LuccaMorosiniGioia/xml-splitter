@@ -8,10 +8,12 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
+import javax.xml.namespace.QName;
 import javax.xml.stream.Location;
 import javax.xml.stream.XMLEventReader;
 import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.XMLStreamReader;
+import javax.xml.stream.events.Attribute;
 import javax.xml.stream.events.EndElement;
 import javax.xml.stream.events.StartDocument;
 import javax.xml.stream.events.StartElement;
@@ -84,10 +86,12 @@ public final class XmlDocumentReader implements AutoCloseable {
         if (nextPolicyStart == null) {
             return null;
         }
+        StartElement start = nextPolicyStart;
+        Attribute idAttribute = start.getAttributeByName(new QName("id"));
         List<XMLEvent> buffer = new ArrayList<>(nextLeading);
-        long transactions = readElementInto(nextPolicyStart, buffer);
+        long transactions = readElementInto(start, buffer);
         advanceToNextPolicy();
-        return new PolicyBlock(buffer, transactions);
+        return new PolicyBlock(buffer, transactions, idAttribute == null ? null : idAttribute.getValue());
     }
 
     public DocumentTail tail() {

@@ -1,0 +1,4 @@
+# Loaded by ExternalConfigurationTest through --spring.config.additional-location (not on the classpath).
+splitter:
+  max-transactions: 77
+  header-mode: first-only

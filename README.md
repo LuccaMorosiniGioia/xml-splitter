@@ -4,13 +4,17 @@ Aplicación de línea de comandos (Java 21 + Spring Boot 4) que divide un XML gr
 `Document > Policy > Claim > Transaction` en varios archivos XML válidos. Cada archivo contiene Policies
 **enteras**, en el orden de entrada, y como máximo **X** `Transaction` (X configurable, por defecto 5.000).
 
+**Única excepción al límite:** una Policy que por sí sola tiene más de X Transactions no puede dividirse, así
+que va sola en su propio archivo, que queda marcado (`overLimit: true` en `manifest.json` y un `WARN` en el
+log). Ver [decisión 1](#decisiones-de-diseño).
+
 - Lectura y escritura en *streaming* (StAX): la memoria depende del tamaño de una Policy, no del archivo.
   Un archivo de 320 MB se procesa en ~5 s con un heap de 128 MB (ver [Prueba de carga](#prueba-de-carga)).
 - Una Policy (y por lo tanto un Claim) nunca se divide entre archivos.
-- Se preserva todo el contenido: atributos (en su orden), namespaces, CDATA, comentarios y elementos
-  desconocidos se copian tal cual.
-- Ejecución "todo o nada": se escribe en una carpeta temporal y se publica con un *rename* atómico, junto con
-  un `manifest.json` y un marcador `_SUCCESS`.
+- Se preserva toda la información: atributos (en su orden), namespaces, CDATA, comentarios y elementos
+  desconocidos. El resultado es equivalente, no idéntico byte a byte (ver [decisión 9](#decisiones-de-diseño)).
+- Ejecución "todo o nada": se escribe en una carpeta temporal que solo se publica (renombrándola) si todo salió
+  bien, junto con un `manifest.json` y un marcador `_SUCCESS`.
 
 ---
 
@@ -45,7 +49,13 @@ Aplicación de línea de comandos (Java 21 + Spring Boot 4) que divide un XML gr
 # Compilar, correr los tests y generar el jar
 .\mvnw.cmd clean package
 
-# Ejecutar con el ejemplo incluido (6 Policies, 10 Transactions), máximo 4 Transactions por archivo
+# Ejemplo exacto del enunciado (P1 con 5 Transactions, P2 con 4) con X = 5: genera 2 archivos (5 y 4)
+java -jar target\xml-splitter-1.0.0.jar --input=samples\ejemplo-enunciado.xml --max-transactions=5
+
+# Mismo ejemplo con X = 4: P1 (5 Transactions) va sola y queda marcada como fuera de límite
+java -jar target\xml-splitter-1.0.0.jar --input=samples\ejemplo-enunciado.xml --max-transactions=4 --output=target\ejemplo-x4
+
+# Ejemplo más rico (namespaces, header, trailer, CDATA; 6 Policies, 10 Transactions), máximo 4 por archivo
 java -jar target\xml-splitter-1.0.0.jar --input=samples\policies.xml --max-transactions=4
 
 # Ayuda
@@ -56,6 +66,7 @@ java -jar target\xml-splitter-1.0.0.jar --help
 
 ```bash
 ./mvnw clean package
+java -jar target/xml-splitter-1.0.0.jar --input=samples/ejemplo-enunciado.xml --max-transactions=5
 java -jar target/xml-splitter-1.0.0.jar --input=samples/policies.xml --max-transactions=4
 java -jar target/xml-splitter-1.0.0.jar --help
 ```
@@ -86,17 +97,20 @@ Los valores por defecto están en `src/main/resources/application.yml`. Cualquie
 comandos **pisa** el valor del archivo. También se puede usar un `application.yml` externo
 (`--spring.config.additional-location=...`) o propiedades de Spring (`--splitter.max-transactions=...`).
 
+Las opciones marcadas *(extra)* son opcionales y van más allá del núcleo (ver
+[Núcleo vs. extras opcionales](#núcleo-vs-extras-opcionales)); con los valores por defecto no hace falta tocarlas.
+
 | Opción CLI | Propiedad (`application.yml`) | Defecto | Descripción |
 |---|---|---|---|
 | `--input=<archivo>` (o primer argumento) | — | — | XML a dividir (obligatorio) |
 | `--output=<carpeta>` | `splitter.output-dir` | `<carpeta del input>/<nombre>-parts` | Carpeta de salida |
 | `--max-transactions=<X>` | `splitter.max-transactions` | `5000` | Máximo de Transactions por archivo (≥ 1) |
-| `--header-mode=<modo>` | `splitter.header-mode` | `every-file` | `every-file` o `first-only` |
-| `--trailer-mode=<modo>` | `splitter.trailer-mode` | `last-file` | `last-file` o `every-file` |
-| `--split-element=<nombre>` | `splitter.split-element` | `Policy` | Elemento que nunca se divide |
-| `--counted-element=<nombre>` | `splitter.counted-element` | `Transaction` | Elemento que cuenta contra X |
-| `--schema=<archivo.xsd>` | — | — | Valida además cada archivo de salida contra un XSD |
-| `--overwrite` | `splitter.overwrite` | `false` | Reemplaza la salida de una corrida anterior |
+| `--header-mode=<modo>` *(extra)* | `splitter.header-mode` | `every-file` | `every-file` o `first-only` |
+| `--trailer-mode=<modo>` *(extra)* | `splitter.trailer-mode` | `last-file` | `last-file` o `every-file` |
+| `--split-element=<nombre>` *(extra)* | `splitter.split-element` | `Policy` | Elemento que nunca se divide |
+| `--counted-element=<nombre>` *(extra)* | `splitter.counted-element` | `Transaction` | Elemento que cuenta contra X |
+| `--schema=<archivo.xsd>` *(extra)* | — | — | Valida además cada archivo de salida contra un XSD |
+| `--overwrite` *(extra)* | `splitter.overwrite` | `false` | Reemplaza la salida de una corrida anterior |
 
 ## Salida y códigos de salida
 
@@ -105,13 +119,19 @@ policies-parts/
 ├── policies_part_0001.xml
 ├── policies_part_0002.xml
 ├── ...
-├── manifest.json     # parámetros, totales y, por archivo: policies, transactions, bytes, overLimit
-└── _SUCCESS          # marcador vacío: la corrida terminó bien
+├── manifest.json     # (extra) parámetros, totales y, por archivo: policies, transactions, bytes, overLimit
+└── _SUCCESS          # (extra) marcador vacío: la corrida terminó bien
 ```
+
+Si una parte supera X (una Policy sola con más de X Transactions), se registra un aviso como:
+`WARN Part 1 exceeds the limit: Policy P1 has 5 Transaction (X = 4); it is written alone because a Policy is never split`,
+y la parte figura con `overLimit: true` en el manifiesto y "(single Policy over the limit)" en el resumen.
 
 Cada archivo tiene: declaración XML (con el encoding original), comentarios/PI previos al root, el elemento
 root con todos sus atributos y namespaces, el *header* (según `header-mode`), las Policies y, según
 `trailer-mode`, el *trailer*.
+
+Códigos de salida *(extra: lo mínimo sería 0 = éxito y ≠ 0 = error)*:
 
 | Código | Significado |
 |---|---|
@@ -137,7 +157,7 @@ XmlDocumentReader ──► PolicyBlock (una Policy entera + su conteo de Transa
                                │
                  OutputVerifier (+ SchemaValidator opcional) ── re-lee cada parte
                                │
-                 ManifestWriter ──► OutputPublisher (rename atómico staging ─► salida)
+                 ManifestWriter ──► OutputPublisher (rename staging ─► salida)
 ```
 
 1. **Lectura** (`XmlDocumentReader`): recorre el XML con StAX. Guarda en memoria el *head* (declaración,
@@ -150,8 +170,8 @@ XmlDocumentReader ──► PolicyBlock (una Policy entera + su conteo de Transa
 4. **Verificación** (`OutputVerifier`): re-parsea cada parte (también en streaming) y comprueba que sea XML
    bien formado y que tenga exactamente las Policies y Transactions que se escribieron. Opcionalmente, valida
    contra un XSD (`SchemaValidator`).
-5. **Publicación** (`ManifestWriter`, `OutputPublisher`): escribe `manifest.json` y `_SUCCESS` en la carpeta
-   temporal y la renombra a la carpeta final.
+5. **Publicación** *(extra)* (`ManifestWriter`, `OutputPublisher`): escribe `manifest.json` y `_SUCCESS` en
+   la carpeta temporal y la renombra a la carpeta final.
 
 **Estructura del código**
 
@@ -160,26 +180,48 @@ XmlDocumentReader ──► PolicyBlock (una Policy entera + su conteo de Transa
 | `core` | `XmlSplitService` (orquestación, independiente de la CLI), `StreamingSplitter`, modelo (`SplitRequest`, `SplitSettings`, `SplitResult`, `PartSummary`), `SplitException` |
 | `core.packing` | `PackingStrategy` y `SequentialGreedyPacking` (la regla de corte, sin I/O) |
 | `core.xml` | StAX: lectura, escritura, sellado, verificación y XSD |
-| `core.output` | Carpeta temporal, publicación atómica y manifiesto |
+| `core.output` | Carpeta temporal, publicación y manifiesto *(extra)* |
 | `cli` | Adaptador de línea de comandos: parseo, propiedades, códigos de salida |
 
 El núcleo no tiene anotaciones de Spring ni conoce la CLI; un endpoint REST o SOAP podría llamar a
 `XmlSplitService.split(SplitRequest)` sin cambios.
 
+### Núcleo vs. extras opcionales
+
+**Núcleo** (lo que resuelve el enunciado): lectura en streaming (`XmlDocumentReader`), empaquetado greedy
+(`SequentialGreedyPacking`), escritura de partes válidas (`PartWriter`, `PartSealer`) y verificación de cada
+parte (`OutputVerifier`).
+
+**Extras opcionales** (más allá del núcleo; marcados *(extra)* en este README), y por qué existen:
+
+- **Staging + publicación + `manifest.json`/`_SUCCESS`**: un fallo a mitad de un archivo de 300 MB no deja
+  salida parcial, y el manifiesto permite auditar qué se generó.
+- **Modos de header/trailer**: el contenido fuera de las Policies no está definido en el enunciado; los
+  modos dejan elegir sin tocar código.
+- **Nombres de elementos configurables**: el XML real es más complejo y los nombres o prefijos podrían
+  cambiar.
+- **XSD opcional (`--schema`)**: validar contra el esquema real si existe; por defecto solo se exige
+  well-formedness.
+- **Protección de 1.000.000 de eventos**: corta con un mensaje claro en vez de quedarse sin memoria si
+  `split-element` está mal configurado.
+- **Códigos de salida detallados (0–7)**: un scheduler o script puede reaccionar sin leer el log.
+- **Manejo de UTF-16**: preservar el encoding de entrada incluye UTF-16 (con o sin declaración), que
+  necesita cuidado al agregar el cierre de cada parte.
+
 ## Decisiones de diseño
 
 | # | Decisión | Por qué | Trade-off |
 |---|---|---|---|
-| 1 | **X como límite "blando" en el borde de cada Policy.** Se cierra el archivo **antes** de una Policy que lo haría superar X. Solo se supera X si una Policy sola tiene más de X Transactions: va sola en su propio archivo (`overLimit: true` en el manifiesto). | Requisito: una Policy/Claim nunca se divide, aunque supere X. Cerrar el archivo antes mantiene la garantía "≤ X" siempre que es posible. | Como un archivo se cierra antes de una Policy que no entra, el espacio que queda sin usar siempre es menor que el tamaño de esa Policy. Las Policies rara vez superan ~100 Transactions, así que en el peor caso un archivo queda ~99 por debajo de X (< 2 % con X = 5.000); en la prueba de 320 MB el llenado promedio fue 99,6 %. La alternativa, partir una Policy para llenar exactamente X, está prohibida por los requisitos. |
-| 2 | **Root + header en todos los archivos, trailer solo en el último** (configurable). | Cada archivo debe ser un documento válido y autocontenido con la jerarquía original; el trailer suele ser un resumen del lote completo. | El header se duplica (pocos bytes). Si el trailer contiene totales del lote, en los archivos parciales no coinciden con su contenido: por eso por defecto va solo en el último. |
+| 1 | **X como límite "blando" en el borde de cada Policy.** Se cierra el archivo **antes** de una Policy que lo haría superar X. Solo se supera X si una Policy sola tiene más de X Transactions: va sola en su propio archivo (`overLimit: true` en el manifiesto y un `WARN` en el log con la parte, el id de la Policy y su cantidad frente a X). | Requisito: una Policy/Claim nunca se divide, aunque supere X. Cerrar el archivo antes mantiene la garantía "≤ X" siempre que es posible. | Como un archivo se cierra antes de una Policy que no entra, el espacio que queda sin usar siempre es menor que el tamaño de esa Policy. Las Policies rara vez superan ~100 Transactions, así que en el peor caso un archivo queda ~99 por debajo de X (< 2 % con X = 5.000); en la prueba de 320 MB el llenado promedio fue 99,6 %. La alternativa, partir una Policy para llenar exactamente X, está prohibida por los requisitos. |
+| 2 | **Root + header en todos los archivos, trailer solo en el último** (configurable *(extra)*). | Cada archivo debe ser un documento válido y autocontenido con la jerarquía original; el trailer suele ser un resumen del lote completo. | El header se duplica (pocos bytes). Si el trailer contiene totales del lote, en los archivos parciales no coinciden con su contenido: por eso por defecto va solo en el último. |
 | 3 | **Se preserva el orden de entrada.** | Reordenar (bin packing) ganaría como mucho ~2 % de llenado, y se pierde trazabilidad: la parte N es un tramo contiguo del original, comparable línea a línea. Además obligaría a retener o releer Policies. | Algunos archivos un poco menos llenos. El motivo está documentado en `SequentialGreedyPacking`. |
 | 4 | **Se cuentan los `Transaction` a cualquier profundidad dentro de la Policy.** | El XML real es más complejo; no hay que asumir que cuelgan directamente de `Claim`. | Un `Transaction` fuera de una Policy (p. ej. en el header) no cuenta. |
-| 5 | **Nombres de elementos configurables**, comparados por *local name*. | Barato y útil si cambian los nombres o hay prefijos de namespace. | Dos elementos con el mismo nombre local en distintos namespaces se tratarían igual. |
+| 5 | **Nombres de elementos configurables** *(extra)*, comparados por *local name*. | Barato y útil si cambian los nombres o hay prefijos de namespace. | Dos elementos con el mismo nombre local en distintos namespaces se tratarían igual. |
 | 6 | **Solo CLI** (`ApplicationRunner`), núcleo independiente de la interfaz. | Es lo que pide el enunciado (ejecución local, sin GUI). | SOAP/REST quedan como mejora. |
-| 7 | **`--overwrite` explícito.** Sin él, si la carpeta de salida existe y no está vacía, falla (código 6). Con él, solo reemplaza carpetas que tienen un `manifest.json` (es decir, generadas por esta herramienta). | Evita pisar resultados por accidente y, sobre todo, evita borrar una carpeta ajena si alguien pasa `--output=C:\Users\...`. | Para reutilizar una carpeta ajena hay que vaciarla a mano. |
-| 8 | **Staging + rename atómico + `manifest.json`/`_SUCCESS`.** Las partes se escriben en una carpeta oculta hermana de la salida (mismo file system) y se publica con un único rename. Con `--overwrite`, la salida anterior se aparta, se publica la nueva y recién entonces se borra la anterior (si algo falla, se restaura). | Un error a mitad de un archivo de 300 MB no deja salida parcial. El manifiesto permite auditar y a un consumidor saber qué esperar. | Requiere espacio en disco para la salida completa antes de publicar (igual que sin staging). |
+| 7 | **`--overwrite` explícito** *(extra)*. Sin él, si la carpeta de salida existe y no está vacía, falla (código 6). Con él, solo reemplaza carpetas que tienen un `manifest.json` (es decir, generadas por esta herramienta). | Evita pisar resultados por accidente y, sobre todo, evita borrar una carpeta ajena si alguien pasa `--output=C:\Users\...`. | Para reutilizar una carpeta ajena hay que vaciarla a mano. |
+| 8 | **Staging + rename + `manifest.json`/`_SUCCESS`** *(extra)*. Las partes se escriben en una carpeta oculta hermana de la salida (mismo file system) y se publican renombrando esa carpeta; si la salida no existía, es un único rename atómico. Con `--overwrite` son dos pasos: la salida anterior se mueve a un lado, se renombra la nueva y recién entonces se borra la anterior (si el rename falla, se restaura). | Un error a mitad de un archivo de 300 MB no deja salida parcial. El manifiesto permite auditar y a un consumidor saber qué esperar. | Requiere espacio en disco para la salida completa antes de publicar (igual que sin staging). |
 | 9 | **Se preserva el encoding de entrada**; se garantiza el mismo contenido, no los mismos bytes. | Los consumidores esperan el mismo encoding. | Diferencias cosméticas: comillas simples en la declaración XML, saltos de línea en el prolog, espacios dentro de etiquetas, entidades resueltas como texto. |
-| 10 | **Siempre se verifica well-formedness** de la entrada (al parsear) y de cada salida (re-lectura con conteo). `--schema` opcional para XSD. | Comprueba la salida real en disco, no lo que el programa cree que escribió. | La re-lectura duplica la lectura de disco (en la prueba de carga el total igual queda en ~5 s para 320 MB). |
+| 10 | **Siempre se verifica well-formedness** de la entrada (al parsear) y de cada salida (re-lectura con conteo). `--schema` opcional para XSD *(extra)*. | Comprueba la salida real en disco, no lo que el programa cree que escribió. | La re-lectura duplica la lectura de disco (en la prueba de carga el total igual queda en ~5 s para 320 MB). |
 | 11 | **Streaming con memoria acotada**, probado con 320 MB y `-Xmx128m`. | El input supera 300 MB; DOM/Jackson necesitarían varias veces ese tamaño en heap. | El código es más detallado que con un modelo en memoria. |
 | 12 | **Woodstox** como implementación StAX (en vez de la del JDK). | La del JDK pierde el orden de atributos y convierte CDATA en texto escapado; Woodstox los conserva y escribe `<x/>` para elementos vacíos, así la salida es casi idéntica a la entrada. Es Apache 2.0 y muy usado (Jackson XML, CXF). | Una dependencia más. |
 | 13 | **Cierre diferido del root** (`PartSealer`). | El trailer solo se conoce al final del archivo; con `trailer-mode=every-file` las partes anteriores también lo necesitan. Como están en staging, se terminan de escribir al final. | Cada parte se abre dos veces (costo despreciable). |
@@ -198,8 +240,9 @@ Tomados del análisis previo; los más riesgosos son configurables.
 6. **Interfaz**: CLI con argumentos y `application.yml`.
 7. **Nombres de salida**: `<nombreDelInput>_part_0001.xml` en la carpeta de salida (por defecto
    `<input>-parts` junto al input). Falla si ya existe, salvo `--overwrite`.
-8. **Errores**: todo o nada (staging + rename atómico).
-9. **Encoding**: se conserva el de la declaración (o el detectado, p. ej. por BOM; UTF-8 si no hay ninguno).
+8. **Errores**: todo o nada (staging + rename; ver decisión 8).
+9. **Encoding**: se conserva el de la declaración (o el detectado, p. ej. por BOM en UTF-16 *(extra)*; UTF-8 si
+   no hay ninguno).
    No se promete preservar byte a byte los espacios fuera de las Policies.
 10. **Validación**: solo well-formedness por defecto; XSD opcional con `--schema`.
 11. **Recursos**: sin objetivo explícito; la memoria queda acotada por la Policy más grande.
@@ -211,7 +254,7 @@ Supuestos adicionales tomados al implementar:
     salida incorrecta. Ver la mejora [Policies anidadas](#policies-anidadas).
 13. **Contenido intercalado entre Policies** (comentarios u otros elementos hermanos) viaja con la Policy
     siguiente, para no perderlo ni reordenarlo.
-14. **Header y trailer son chicos** y se guardan en memoria. Como protección, si hay más de 1.000.000 de
+14. **Header y trailer son chicos** y se guardan en memoria. Como protección *(extra)*, si hay más de 1.000.000 de
     eventos XML fuera de cualquier Policy, se aborta con un mensaje claro (casi siempre significa que
     `split-element` está mal configurado).
 15. **Una Policy entra en memoria** (el enunciado habla de ~100 Transactions como máximo habitual).
@@ -230,7 +273,7 @@ Supuestos adicionales tomados al implementar:
 
 ## Validación: alternativa de dos pasadas
 
-Se eligió **staging + rename atómico + manifiesto**: una sola pasada sobre la entrada, y la entrada mal
+Se eligió **staging + rename + manifiesto**: una sola pasada sobre la entrada, y la entrada mal
 formada se detecta al parsear. Si falla en el byte 299.000.000, se descarta la carpeta temporal.
 
 La alternativa válida es **validar primero y dividir después** (dos pasadas):
@@ -251,15 +294,17 @@ mismo lector.
 .\mvnw.cmd test      # Windows
 ```
 
-38 tests (JUnit 5 + AssertJ), corren en pocos segundos:
+44 tests (JUnit 5 + AssertJ), corren en pocos segundos:
 
 | Clase | Qué cubre |
 |---|---|
-| `XmlSplitServiceTest` | límite respetado; cierre antes de una Policy que desborda; Policies nunca divididas y copiadas idénticas (comparación DOM nodo a nodo); Policy sobredimensionada sola; totales e ids de Policy iguales a la entrada y en el mismo orden; Transactions anidadas; archivos llenos (1.000 Policies, X = 100 → 10 archivos); salidas bien formadas con root, atributos y namespaces; header/trailer en sus dos modos; X = 1; documento sin Policies; encoding ISO-8859-1; manifiesto; XSD válido e inválido; Policy anidada no soportada; X < 1 |
+| `BriefExampleTest` | el ejemplo exacto del enunciado (`samples/ejemplo-enunciado.xml`): con X = 5 da 2 archivos (5 y 4); con X = 4 la parte 1 queda `overLimit` y se registra el `WARN` |
+| `XmlSplitServiceTest` | límite respetado; cierre antes de una Policy que desborda; Policies nunca divididas y copiadas idénticas (comparación DOM nodo a nodo); Policy sobredimensionada sola; totales e ids de Policy iguales a la entrada y en el mismo orden; Transactions anidadas; archivos llenos (1.000 Policies, X = 100 → 10 archivos); salidas bien formadas con root, atributos y namespaces; header/trailer en sus dos modos; X = 1; documento sin Policies; encoding ISO-8859-1; UTF-16 declarado y UTF-16 detectado por BOM sin declaración; comentarios y PIs después del root en todas las partes; manifiesto; XSD válido e inválido; Policy anidada no soportada; X < 1 |
 | `OutputSafetyTest` | sin `--overwrite` no pisa; con `--overwrite` reemplaza y elimina partes viejas; no pisa carpetas ajenas; carpeta vacía reutilizable; entrada truncada a mitad → sin salida y sin restos de staging; un `--overwrite` fallido conserva la salida anterior; input inexistente |
 | `SplitCommandTest` | parseo de argumentos, prioridad CLI sobre `application.yml`, argumento posicional, `--help`, cada código de salida |
 | `SequentialGreedyPackingTest` | la regla de corte, aislada |
 | `XmlSplitterApplicationTests` | arranque del contexto Spring y binding de `application.yml` |
+| `ExternalConfigurationTest` | un YAML externo vía `--spring.config.additional-location` sobrescribe los valores por defecto |
 
 ## Prueba de carga
 

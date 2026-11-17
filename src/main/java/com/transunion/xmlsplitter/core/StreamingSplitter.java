@@ -54,6 +54,7 @@ class StreamingSplitter {
                         current = openPart(targetDir, baseName, parts.size() + 1, head, settings);
                     }
                     current.write(policy);
+                    warnIfOverLimit(policy, parts.size() + 1, settings);
                 }
                 if (current == null) {
                     // No Policies at all: still produce one part holding the root, header and trailer.
@@ -75,6 +76,16 @@ class StreamingSplitter {
                 PartSealer.seal(parts.get(i).file(), head.encoding(), tail, settings.trailerMode().includeIn(last));
             }
             return new WrittenParts(head.encoding(), parts);
+        }
+    }
+
+    /** The only case where a part exceeds X: one Policy larger than X, which the packing puts alone in its part. */
+    private static void warnIfOverLimit(PolicyBlock policy, int partNumber, SplitSettings settings) {
+        if (policy.transactions() > settings.maxTransactionsPerFile()) {
+            log.warn("Part {} exceeds the limit: {} {} has {} {} (X = {}); it is written alone because a {} is never split",
+                    partNumber, settings.splitElement(), policy.id() == null ? "(no id)" : policy.id(),
+                    policy.transactions(), settings.countedElement(), settings.maxTransactionsPerFile(),
+                    settings.splitElement());
         }
     }
 

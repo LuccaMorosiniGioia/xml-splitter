@@ -188,6 +188,45 @@ class XmlSplitServiceTest {
     }
 
     @Test
+    void preservesADeclaredUtf16Encoding() throws IOException {
+        Path input = TestXml.document().encoding("UTF-16").policies(1, 1).writeTo(tmp.resolve("utf16.xml"));
+
+        SplitResult result = split(input, 1);
+        List<Part> parts = Parts.readAll(result.outputDir());
+
+        assertThat(result.encoding()).isEqualToIgnoringCase("UTF-16");
+        assertThat(parts).hasSize(2).allSatisfy(part ->
+                assertThat(part.root().getTextContent()).contains("Tést & Co"));
+        assertThat(parts.get(1).hasTrailer()).isTrue();
+    }
+
+    @Test
+    void detectsUtf16FromTheByteOrderMarkWhenThereIsNoDeclaration() throws IOException {
+        String withDeclaration = TestXml.document().policies(1, 1).build();
+        Path input = tmp.resolve("bom.xml");
+        Files.writeString(input, withDeclaration.substring(withDeclaration.indexOf('\n') + 1), StandardCharsets.UTF_16);
+
+        SplitResult result = split(input, 1);
+
+        assertThat(result.encoding()).startsWithIgnoringCase("UTF-16");
+        assertThat(Parts.readAll(result.outputDir())).hasSize(2).allSatisfy(part ->
+                assertThat(part.root().getTextContent()).contains("Tést & Co"));
+    }
+
+    @Test
+    void copiesCommentsAndProcessingInstructionsAfterTheRootIntoEveryPart() throws IOException {
+        Path input = tmp.resolve("epilog.xml");
+        Files.writeString(input, TestXml.document().policies(1, 1).build() + "<!-- end of batch -->\n<?audit done?>\n");
+
+        List<Part> parts = Parts.readAll(split(input, 1).outputDir());
+
+        assertThat(parts).hasSize(2).allSatisfy(part -> {
+            String text = Files.readString(part.file());
+            assertThat(text.substring(text.indexOf("</Document>"))).contains("<!-- end of batch -->", "<?audit done?>");
+        });
+    }
+
+    @Test
     void writesManifestAndSuccessMarker() throws IOException {
         Path input = TestXml.document().policies(2, 2, 2).writeTo(tmp.resolve("in.xml"));
 
